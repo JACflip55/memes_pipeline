@@ -1,0 +1,6 @@
+*.pickle
+*.json
+*.txt
+distance_matrix
+index_images.p
+__pycache__

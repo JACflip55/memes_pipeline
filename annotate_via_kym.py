@@ -17,6 +17,8 @@ import pickle
 import ast
 
 import tensorflow as tf
+import tensorflow.compat.v1 as v1
+
 import numpy as np
 
 
@@ -42,7 +44,7 @@ def hex_to_hash(hexstr, hash_size=8):
 
 
 def process_clusters_file(clusters_file):
-    
+
     clusters = {}
 
     print('[i] process_clusters_file', clusters_file)
@@ -50,11 +52,11 @@ def process_clusters_file(clusters_file):
     with open(clusters_file) as fd:
         for idx, line in enumerate(fd.readlines()):
 
-            # for each cluster, get the medroid 
+            # for each cluster, get the medroid
             dic = ast.literal_eval(line)
             cluster_no = int(dic['cluster_no'])
 
-            if cluster_no == -1: 
+            if cluster_no == -1:
                 continue
 
             images = dic['images']
@@ -66,7 +68,7 @@ def process_clusters_file(clusters_file):
 
 
 def process_kym_files(kym_phashes_file):
-    
+
     kym_phashes_by_meme_dic = {}
     kym_images_dic = {}
     kym_images_dic_reverse = {}
@@ -120,12 +122,12 @@ def read_phashes_manifest(phashes_path):
 
 
 def default(o):
-    if isinstance(o, np.int64): return int(o)  
+    if isinstance(o, np.int64): return int(o)
     raise TypeError
 
 def precompute_vectors(hashes_dic, phases_path):
     pickle_file = phases_path + '.pickle'
-    if os.path.isfile(pickle_file): 
+    if os.path.isfile(pickle_file):
         with open(pickle_file, 'rb') as fo:
             hashes = pickle.load(fo)
         print('[w] fetched precomputed vectors from ', pickle_file, 'new processed', len(hashes))
@@ -138,11 +140,11 @@ def precompute_vectors(hashes_dic, phases_path):
 
     return hashes
 
-    
+
 def fetch_info_kym(phash, kym_phashes_by_meme_dic, kym_images_dic, kym_images_dic_reverse, kym_meme_name, kym_phashes):
-    
+
     phashes = list(kym_images_dic_reverse.values())
-    index = phashes.index(phash) 
+    index = phashes.index(phash)
 
     meme_name = kym_meme_name[phash]
     image_name = kym_images_dic[phash]
@@ -153,7 +155,7 @@ def fetch_info_kym(phash, kym_phashes_by_meme_dic, kym_images_dic, kym_images_di
 
 
 def check_batch_many(sess, hashes, enqueue_op, init_i, batch_size, queue_i, queue_hash_i, blacklist=[], num_devices=1):
-    
+
     x = []
     y = []
 
@@ -176,7 +178,7 @@ def check_batch_many(sess, hashes, enqueue_op, init_i, batch_size, queue_i, queu
 
 
 '''
-    #for d in ['/gpu:0', '/gpu:1']: 
+    #for d in ['/gpu:0', '/gpu:1']:
     #    with tf.device(d):
     Can't use /gpu:1 -- https://github.com/tensorflow/tensorflow/issues/9506
 '''
@@ -187,38 +189,39 @@ def seek_queue_many(ids_i, ids_j, hashes_i, hashes_j, outdir, blacklist, hashes_
     num_threads = 5
     batch_size = int(len_hashes/num_threads)+1
     total_tasks = len_hashes - len(blacklist)
-    pbar = tf.contrib.keras.utils.Progbar(total_tasks)
+    pbar = tf.keras.utils.Progbar(total_tasks)
 
     # are used to feed data into our queue
-    queue_i = tf.placeholder(tf.int32, shape=[None])
-    queue_hash_i = tf.placeholder(tf.bool, shape=[None, 64])
-    queue_hashes_j = tf.placeholder(tf.bool, shape=[batch_size, None]) #shape=[None, 64] [len_hashes]
+    v1.disable_eager_execution()
+    queue_i = v1.placeholder(tf.int32, shape=[None])
+    queue_hash_i = v1.placeholder(tf.bool, shape=[None, 64])
+    queue_hashes_j = v1.placeholder(tf.bool, shape=[batch_size, None]) #shape=[None, 64] [len_hashes]
 
-    queue = tf.FIFOQueue(capacity=50, dtypes=[tf.int32, tf.bool], shapes=[[], [64]])
+    queue = tf.queue.FIFOQueue(capacity=50, dtypes=[tf.int32, tf.bool], shapes=[[], [64]])
 
     enqueue_op = queue.enqueue_many([queue_i, queue_hash_i])
     dequeue_op = queue.dequeue()
 
-    diff_hash_i = tf.placeholder(tf.bool, shape=[64])
-    diff_hashes_j = tf.placeholder(tf.bool, shape=[None, 64])
-    diff_op_many = tf.count_nonzero(tf.not_equal(diff_hash_i, diff_hashes_j), 1) 
+    diff_hash_i = v1.placeholder(tf.bool, shape=[64])
+    diff_hashes_j = v1.placeholder(tf.bool, shape=[None, 64])
+    diff_op_many = tf.math.count_nonzero(tf.not_equal(diff_hash_i, diff_hashes_j), 1)
 
     filter_op = tf.less_equal(diff_op_many, DISTANCE_THRESHOLD)
 
     where_op = tf.where(filter_op)
 
     # start the threads for our FIFOQueue and batch
-    config=tf.ConfigProto(allow_soft_placement=True)
-    sess = tf.Session(config=config)
-    
+    config=v1.ConfigProto(allow_soft_placement=True)
+    sess = v1.Session(config=config)
+
     enqueue_threads = [threading.Thread(target=check_batch_many, args=[sess, hashes_i, enqueue_op, init_i, batch_size, queue_i, queue_hash_i, blacklist]) for init_i in range(last_index, len_hashes, batch_size)]
     # Start the threads and wait for all of them to stop.
-    for t in enqueue_threads: 
+    for t in enqueue_threads:
         t.isDaemon()
         t.start()
 
     coord = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(coord=coord, sess=sess)
+    threads = v1.train.start_queue_runners(coord=coord, sess=sess)
 
     pbar.update(0)
 
@@ -230,7 +233,7 @@ def seek_queue_many(ids_i, ids_j, hashes_i, hashes_j, outdir, blacklist, hashes_
         i, hash_i = sess.run(dequeue_op)
         diff, filter, where = sess.run([diff_op_many, filter_op, where_op], feed_dict={diff_hash_i: hash_i, diff_hashes_j: hashes_j})
         for j in where:
-            j_pos = j[0] 
+            j_pos = j[0]
             key_id = str(ids_i[i]) + '-' + str(ids_j[j_pos])
             hashes_diff[key_id] = diff[j_pos]
 
@@ -248,7 +251,7 @@ def seek_queue_many(ids_i, ids_j, hashes_i, hashes_j, outdir, blacklist, hashes_
         pbar.update(_)
 
     with open(outdir, 'w') as outfile:
-        json.dump(hashes_diff, outfile, default=default)         
+        json.dump(hashes_diff, outfile, default=default)
 
     # shutdown everything to avoid zombies
     sess.run(queue.close(cancel_pending_enqueues=True))
@@ -274,21 +277,21 @@ def main(options, arguments):
 
     if options.distance == None:
         distance = 8
-    else: 
+    else:
         distance = int(options.distance)
-    global DISTANCE_THRESHOLD 
+    global DISTANCE_THRESHOLD
     DISTANCE_THRESHOLD = distance
     phases_path = options.phashes
 
     clusters_file = options.clustering
     #if distance != 8:
     #    clusters_file = clusters_file.replace('.txt', '_' + str(distance) + '.txt')
-        
+
     kym_phashes_file = "kym_phashes_classes.txt"
     outfile = options.output
 
-    ''' 
-        Process Clusters 
+    '''
+        Process Clusters
     '''
     clusters = process_clusters_file(clusters_file)
     src_hashes_dic = read_phashes_manifest(phases_path)
@@ -303,8 +306,8 @@ def main(options, arguments):
 
     print('[i] computed cluster backnone with #hashes', len(cluster_hashes))
 
-    ''' 
-        Process KYM 
+    '''
+        Process KYM
     '''
     kym_phashes_by_meme_dic, kym_images_dic, kym_images_dic_reverse, kym_meme_name = process_kym_files(kym_phashes_file)
     kym_phashes = precompute_vectors(kym_images_dic_reverse, kym_phashes_file)
@@ -336,5 +339,3 @@ if __name__ == "__main__" :
 
     (options, arguments) = parser.parse_args()
     main(options, arguments)
-
-

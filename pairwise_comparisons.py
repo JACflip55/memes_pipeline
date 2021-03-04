@@ -15,26 +15,35 @@ from time import sleep
 import settings
 
 import tensorflow as tf
+# v1 stuff
+import tensorflow.compat.v1 as v1
+#import tensorflow.compat.v1.app.flags as tf_flags
+from tensorflow.compat.v1 import ConfigProto
+
 import numpy as np
 import pickle
 import numpy as np
 
-tf.app.flags.DEFINE_integer("batch_size", 4000000, "Search batch size")
-FLAGS = tf.app.flags.FLAGS
+v1.disable_v2_behavior()
+
+v1.app.flags.DEFINE_integer("batch_size", 4000000, "Search batch size")
+FLAGS = v1.app.flags.FLAGS
 
 DISTANCE_THRESHOLD = 10
 DEBUG = False
 
-config=tf.ConfigProto() #allow_soft_placement=True, log_device_placement=True
+config = v1.ConfigProto()
+#allow_soft_placement=True, log_device_placement=True
+
 #config.gpu_options.allow_growth=True
 config.intra_op_parallelism_threads = 44
 config.inter_op_parallelism_threads = 44
 
 def load_json(outdir_tmp):
     myjson = {}
-    if os.path.isfile(outdir_tmp): 
+    if os.path.isfile(outdir_tmp):
         with open(outdir_tmp, 'r') as outfile:
-            myjson = json.load(outfile)    
+            myjson = json.load(outfile)
     return myjson
 
 
@@ -69,13 +78,13 @@ def read_phashes_manifest(phashes_path):
 def read_phashes_diff(phash_path):
     print('[i] computing diffs in', phash_path)
     hashes = None
-    with open(phash_path) as data_file:    
+    with open(phash_path) as data_file:
         hashes = json.load(data_file)
     return hashes
 
 def precompute_vectors(hashes, phases_path):
     pickle_file = phases_path + '.pickle'
-    if os.path.isfile(pickle_file): 
+    if os.path.isfile(pickle_file):
         with open(pickle_file, 'rb') as fo:
             hashes = pickle.load(fo)
         print('[w] fetch precomputed vectors from ', pickle_file, 'new processed', len(hashes))
@@ -92,34 +101,34 @@ def precompute_vectors(hashes, phases_path):
         with open(pickle_file, 'wb') as fo:
             pickle.dump(hashes2, fo)
     return hashes2
-   
+
 
 '''
-    Re-implementation of seek_sequential making batches of samples. 
-    Use isntead if memory issues with the size of the vectors as the dataset grows. 
+    Re-implementation of seek_sequential making batches of samples.
+    Use isntead if memory issues with the size of the vectors as the dataset grows.
 '''
 def seek_sequential_batch(hashes, outdir):
     # ----------
 
     len_hashes = len(hashes)
-    pbar = tf.contrib.keras.utils.Progbar(len_hashes)
+    pbar = tf.keras.utils.Progbar(len_hashes)
     cprogress = tf.constant(0)
 
-    # One shot iterator through all images in the dataset 
+    # One shot iterator through all images in the dataset
     dataset_i = tf.data.Dataset.range(len_hashes)
     iterator_i = dataset_i.make_one_shot_iterator()
     next_element_i = iterator_i.get_next()
 
-    hash_i = tf.placeholder(tf.bool, shape=[64])
-    hashes_j = tf.placeholder(tf.bool, shape=[None, 64])
+    hash_i = v1.placeholder(tf.bool, shape=[64])
+    hashes_j = v1.placeholder(tf.bool, shape=[None, 64])
 
-    diff_op = tf.count_nonzero(tf.not_equal(hash_i, hashes_j), 1) 
+    diff_op = tf.math.count_nonzero(tf.not_equal(hash_i, hashes_j), 1)
 
-    nz_op = tf.count_nonzero(hashes_j, 1) 
+    nz_op = tf.math.count_nonzero(hashes_j, 1)
 
     pbar.update(0)
 
-    with tf.train.MonitoredSession() as sess: 
+    with tf.train.MonitoredSession() as sess:
 
         for _ in range(len_hashes-1):
             i = sess.run(next_element_i)
@@ -129,8 +138,8 @@ def seek_sequential_batch(hashes, outdir):
 
 
 '''
-    Doesn't use queues and makes batches of samples. 
-    Performance-wise, this method manages to run 100% 
+    Doesn't use queues and makes batches of samples.
+    Performance-wise, this method manages to run 100%
     of the GPU at intervals (feed_dict slows things up).
 '''
 def seek_sequential(hashes, outdir):
@@ -138,21 +147,21 @@ def seek_sequential(hashes, outdir):
     # ----------
 
     len_hashes = len(hashes)
-    pbar = tf.contrib.keras.utils.Progbar(len_hashes)
+    pbar = tf.keras.utils.Progbar(len_hashes)
     cprogress = tf.constant(0)
 
-    # One shot iterator through all images in the dataset 
+    # One shot iterator through all images in the dataset
     dataset_i = tf.data.Dataset.range(len_hashes)
     iterator_i = dataset_i.make_one_shot_iterator()
     next_element_i = iterator_i.get_next()
 
-    hash_i = tf.placeholder(tf.bool, shape=[64])
-    hashes_j = tf.placeholder(tf.bool, shape=[None, 64])
+    hash_i = v1.placeholder(tf.bool, shape=[64])
+    hashes_j = v1.placeholder(tf.bool, shape=[None, 64])
 
-    diff_op = tf.count_nonzero(tf.not_equal(hash_i, hashes_j), 1) 
+    diff_op = tf.math.count_nonzero(tf.not_equal(hash_i, hashes_j), 1)
     pbar.update(0)
 
-    with tf.train.MonitoredSession() as sess: 
+    with tf.train.MonitoredSession() as sess:
 
         for _ in range(len_hashes-1):
             i = sess.run(next_element_i)
@@ -160,7 +169,7 @@ def seek_sequential(hashes, outdir):
             pbar.update(i)
 
 
-''' 
+'''
     Iterates over our data puts small junks into our queue.
 '''
 def check_batch_pair(sess, hashes, enqueue_op, init_i, batch_size, queue_hash_i, queue_hash_j):
@@ -172,7 +181,7 @@ def check_batch_pair(sess, hashes, enqueue_op, init_i, batch_size, queue_hash_i,
         x = []
         y = []
 
-        for hash_j in hashes[i+1:]:  
+        for hash_j in hashes[i+1:]:
             hash_i = hashes[i]
             x.append(hash_i)
             y.append(hash_j)
@@ -190,33 +199,33 @@ def seek_queue_pair(hashes, outdir):
     batch_size = len_hashes/num_threads
 
     # are used to feed data into our queue
-    queue_hash_i = tf.placeholder(tf.bool, shape=[None, 64])
-    queue_hash_j = tf.placeholder(tf.bool, shape=[None, 64])
+    queue_hash_i = v1.placeholder(tf.bool, shape=[None, 64])
+    queue_hash_j = v1.placeholder(tf.bool, shape=[None, 64])
 
-    queue = tf.FIFOQueue(capacity=batch_size, dtypes=[tf.bool, tf.bool], shapes=[[64], [64]])
+    queue = tf.queue.FIFOQueue(capacity=batch_size, dtypes=[tf.bool, tf.bool], shapes=[[64], [64]])
 
     enqueue_pair_op = queue.enqueue_many([queue_hash_i, queue_hash_j])
     dequeue_pair_op = queue.dequeue()
 
-    diff_hash_i = tf.placeholder(tf.bool, shape=[64])
-    diff_hash_j = tf.placeholder(tf.bool, shape=[64])
-    diff_hashes_j = tf.placeholder(tf.bool, shape=[None, 64])
-    diff_op_pair = tf.count_nonzero(tf.not_equal(diff_hash_i, diff_hash_j)) 
+    diff_hash_i = v1.placeholder(tf.bool, shape=[64])
+    diff_hash_j = v1.placeholder(tf.bool, shape=[64])
+    diff_hashes_j = v1.placeholder(tf.bool, shape=[None, 64])
+    diff_op_pair = tf.math.count_nonzero(tf.not_equal(diff_hash_i, diff_hash_j))
 
     # ------------------------- #
 
     # start the threads for our FIFOQueue and batch
-    config=tf.ConfigProto()
-    sess = tf.Session(config=config)
-    
+    config=ConfigProto()
+    sess = v1.Session(config=config)
+
     enqueue_threads = [threading.Thread(target=check_batch_pair, args=(sess, hashes, enqueue_pair_op, init_i, batch_size, queue_hash_i, queue_hash_j)) for init_i in range(last_index, len_hashes, batch_size)]
     # Start the threads and wait for all of them to stop.
-    for t in enqueue_threads: 
+    for t in enqueue_threads:
         t.isDaemon()
         t.start()
-    
+
     coord = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(coord=coord, sess=sess)
+    threads = v1.train.start_queue_runners(coord=coord, sess=sess)
 
     # Fetch the data from the pipeline and put it where it belongs (into your model)
     for _ in range((len_hashes*len_hashes)/2-len_hashes/2):
@@ -233,11 +242,11 @@ def seek_queue_pair(hashes, outdir):
     sess.close()
 
 def default(o):
-    if isinstance(o, np.int64): return int(o)  
+    if isinstance(o, np.int64): return int(o)
     raise TypeError
 
 def check_batch_many(sess, hashes, enqueue_op, init_i, batch_size, queue_i, queue_hash_i, blacklist=[], num_devices=1):
-    
+
     x = []
     y = []
 
@@ -265,11 +274,11 @@ def op_runner(sess, hashes, dequeue_op, init_i, batch_size, diff_op_many, diff_h
         if _ < len_hashes - 1:
             run_options = tf.RunOptions(timeout_in_ms=400000)
             i, hash_i = sess.run(dequeue_op, options=run_options)
-            diff = sess.run(diff_op_many, feed_dict={diff_hash_i: hash_i, diff_hashes_j: hashes[i+1:]})    
+            diff = sess.run(diff_op_many, feed_dict={diff_hash_i: hash_i, diff_hashes_j: hashes[i+1:]})
             pbar.add(num_devices)
 
 '''
-    #for d in ['/gpu:0', '/gpu:1']: 
+    #for d in ['/gpu:0', '/gpu:1']:
     #    with tf.device(d):
     Can't use /gpu:1 -- https://github.com/tensorflow/tensorflow/issues/9506
 '''
@@ -283,37 +292,37 @@ def seek_queue_many(ids, hashes, outdir, blacklist, hashes_diff):
     total_tasks = len_hashes - len(blacklist)
     print(batch_size)
     print(total_tasks)
-    pbar = tf.contrib.keras.utils.Progbar(total_tasks)
+    pbar = tf.keras.utils.Progbar(total_tasks)
 
     # are used to feed data into our queue
-    queue_i = tf.placeholder(tf.int32, shape=[None])
-    queue_hash_i = tf.placeholder(tf.bool, shape=[None, 64])
-    queue_hashes_j = tf.placeholder(tf.bool, shape=[batch_size, None]) #shape=[None, 64] [len_hashes]
+    queue_i = v1.placeholder(tf.int32, shape=[None])
+    queue_hash_i = v1.placeholder(tf.bool, shape=[None, 64])
+    queue_hashes_j = v1.placeholder(tf.bool, shape=[batch_size, None]) #shape=[None, 64] [len_hashes]
 
-    queue = tf.FIFOQueue(capacity=50, dtypes=[tf.int32, tf.bool], shapes=[[], [64]])
+    queue = tf.queue.FIFOQueue(capacity=50, dtypes=[tf.int32, tf.bool], shapes=[[], [64]])
 
     enqueue_op = queue.enqueue_many([queue_i, queue_hash_i])
     dequeue_op = queue.dequeue()
 
-    diff_hash_i = tf.placeholder(tf.bool, shape=[64])
-    diff_hashes_j = tf.placeholder(tf.bool, shape=[None, 64])
-    diff_op_many = tf.count_nonzero(tf.not_equal(diff_hash_i, diff_hashes_j), 1) 
+    diff_hash_i = v1.placeholder(tf.bool, shape=[64])
+    diff_hashes_j = v1.placeholder(tf.bool, shape=[None, 64])
+    diff_op_many = tf.math.count_nonzero(tf.not_equal(diff_hash_i, diff_hashes_j), 1)
 
     filter_op = tf.less_equal(diff_op_many, DISTANCE_THRESHOLD)
 
     where_op = tf.where(filter_op)
 
     # start the threads for our FIFOQueue and batch
-    sess = tf.Session(config=config)
-    
+    sess = v1.Session(config=config)
+
     enqueue_threads = [threading.Thread(target=check_batch_many, args=[sess, hashes, enqueue_op, init_i, batch_size, queue_i, queue_hash_i, blacklist]) for init_i in range(last_index, len_hashes, batch_size)]
     # Start the threads and wait for all of them to stop.
-    for t in enqueue_threads: 
+    for t in enqueue_threads:
         t.isDaemon()
         t.start()
 
     coord = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(coord=coord, sess=sess)
+    threads = v1.train.start_queue_runners(coord=coord, sess=sess)
 
     pbar.update(0)
 
@@ -325,7 +334,7 @@ def seek_queue_many(ids, hashes, outdir, blacklist, hashes_diff):
         i, hash_i = sess.run(dequeue_op)
         diff, filter, where = sess.run([diff_op_many, filter_op, where_op], feed_dict={diff_hash_i: hash_i, diff_hashes_j: hashes[i:]})
         for j in where:
-            j_rel = j[0] 
+            j_rel = j[0]
             j_abs = i+j_rel
             key_id = ids[i] + '-' + ids[j_abs]
             hashes_diff[key_id] = diff[j_rel]
@@ -344,7 +353,7 @@ def seek_queue_many(ids, hashes, outdir, blacklist, hashes_diff):
         pbar.update(_)
 
     with open(outdir, 'w') as outfile:
-        json.dump(hashes_diff, outfile, default=default)         
+        json.dump(hashes_diff, outfile, default=default)
 
     # shutdown everything to avoid zombies
     sess.run(queue.close(cancel_pending_enqueues=True))
@@ -359,7 +368,7 @@ def seek_queue_many(ids, hashes, outdir, blacklist, hashes_diff):
     os.remove(progress_file+'.json')
 
 '''
-    #for d in ['/gpu:0', '/gpu:1']: 
+    #for d in ['/gpu:0', '/gpu:1']:
     #    with tf.device(d):
     Can't use /gpu:1 -- https://github.com/tensorflow/tensorflow/issues/9506
 '''
@@ -372,28 +381,28 @@ def seek_queue_many_device(ids, hashes, outdir, blacklist, hashes_diff, devices,
     num_threads = 8
     batch_size = int(len_hashes/num_threads)
     total_tasks = len_hashes - 1 - len(blacklist)
-    pbar = tf.contrib.keras.utils.Progbar(total_tasks)
+    pbar = tf.keras.utils.Progbar(total_tasks)
 
     # Feed data into our queue
-    queue_i = tf.placeholder(tf.int32, shape=[None])
-    queue_hash_i = tf.placeholder(tf.bool, shape=[None, 64])
-    queue_hashes_j = tf.placeholder(tf.bool, shape=[batch_size, None]) #shape=[None, 64] [len_hashes]
+    queue_i = v1.placeholder(tf.int32, shape=[None])
+    queue_hash_i = v1.placeholder(tf.bool, shape=[None, 64])
+    queue_hashes_j = v1.placeholder(tf.bool, shape=[batch_size, None]) #shape=[None, 64] [len_hashes]
 
     queue = tf.FIFOQueue(capacity=100, dtypes=[tf.int32, tf.bool], shapes=[[], [64]])
 
     enqueue_op = queue.enqueue_many([queue_i, queue_hash_i])
     dequeue_op = queue.dequeue()
 
-    diff_hash_i = tf.placeholder(tf.bool, shape=[64])
-    diff_hashes_j = tf.placeholder(tf.bool, shape=[None, 64])
-    diff_op_many = tf.count_nonzero(tf.not_equal(diff_hash_i, diff_hashes_j), 1) 
+    diff_hash_i = v1.placeholder(tf.bool, shape=[64])
+    diff_hashes_j = v1.placeholder(tf.bool, shape=[None, 64])
+    diff_op_many = tf.math.count_nonzero(tf.not_equal(diff_hash_i, diff_hashes_j), 1)
 
     filter_op = tf.less_equal(diff_op_many, DISTANCE_THRESHOLD)
     where_op = tf.where(filter_op)
 
     # start the threads for our FIFOQueue and batch
-    config=tf.ConfigProto(allow_soft_placement=True)
-    sess = tf.Session(config=config)
+    config = v1.ConfigProto(allow_soft_placement=True)
+    sess = v1.Session(config=config)
 
     if devices.index(device) == 0:
         last_index += last_index % 2
@@ -402,12 +411,12 @@ def seek_queue_many_device(ids, hashes, outdir, blacklist, hashes_diff, devices,
 
     enqueue_threads = [threading.Thread(target=check_batch_many, args=[sess, hashes, enqueue_op, init_i, batch_size, queue_i, queue_hash_i, blacklist, num_devices]) for init_i in range(last_index, len_hashes, batch_size)]
     # Start the threads and wait for all of them to stop.
-    for t in enqueue_threads: 
+    for t in enqueue_threads:
         t.isDaemon()
         t.start()
 
     coord = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(coord=coord, sess=sess)
+    threads = v1.train.start_queue_runners(coord=coord, sess=sess)
 
     pbar.update(0)
 
@@ -419,7 +428,7 @@ def seek_queue_many_device(ids, hashes, outdir, blacklist, hashes_diff, devices,
         i, hash_i = sess.run(dequeue_op)
         diff, filter, where = sess.run([diff_op_many, filter_op, where_op], feed_dict={diff_hash_i: hash_i, diff_hashes_j: hashes[i+1:]})
         for j in where:
-            j_rel = j[0] 
+            j_rel = j[0]
             j_abs = i+j_rel+1
             key_id = ids[i] + '-' + ids[j_abs]
             hashes_diff[key_id] = diff[j_rel]
@@ -440,7 +449,7 @@ def seek_queue_many_device(ids, hashes, outdir, blacklist, hashes_diff, devices,
 
     # Consolidate results
     with open(outdir + '.' + str(settings.distributed_machine) + '.' + str(devices.index(device)), 'w') as outfile:
-        json.dump(hashes_diff, outfile, default=default)      
+        json.dump(hashes_diff, outfile, default=default)
 
     # Reset progress
     with open(progress_file, 'w') as outfile:
@@ -461,7 +470,7 @@ def convert_vectors(hashes):
 
 def read_blacklist(phash_path):
     blacklist = []
-    with open(phash_path + '.new.progress') as data_file:    
+    with open(phash_path + '.new.progress') as data_file:
         blacklist = json.load(data_file)
     blacklist_dic = {}
     for b in blacklist:
@@ -476,7 +485,7 @@ def read_blacklist_dict(phash_path):
     if not os.path.exists(phash_path + '.new_dict.progress'):
         with open(phash_path + '.new_dict.progress', 'w') as f:
             f.write("{}")
-    with open(phash_path + '.new_dict.progress') as data_file:    
+    with open(phash_path + '.new_dict.progress') as data_file:
         blacklist_dic = json.load(data_file)
 
     print('[i] blacklisting', len(blacklist_dic))
@@ -524,4 +533,3 @@ if __name__ == "__main__" :
     (options, arguments) = parser.parse_args()
 
     main(options, arguments)
-

@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import requests
 import shutil
 from PIL import Image
-import pickle 
+import pickle
 import sys
 from scipy.io import loadmat
 plt.switch_backend('agg')
@@ -22,7 +22,7 @@ import os
 
 parser = OptionParser()
 parser.add_option("-c", "--clustering", dest='clustering', default='clustering_output.txt',help="file that includes clustering output")
-parser.add_option("-m", "--matrix", dest='matrix', default='distance_matrix.mat',help="distances in csr_matrix format")
+parser.add_option("-m", "--matrix", dest='matrix', default='distance_matrix',help="distances in csr_matrix format")
 parser.add_option("-i", "--index", dest='index', default='index_images.p',help="dictionary that includes the mapping between images and index in distance matrix")
 parser.add_option("-o", "--output", dest='output', default='clusters_visualization/',help="directory to put pdfs")
 
@@ -49,14 +49,14 @@ with open(inp_file, 'r') as f:
         cluster = output_json['cluster_no']
         if cluster == -1:
             continue
-        part = 0   
+        part = 0
         pdf = PdfPages(base_dir_output + 'cluster'+str(cluster)+'.pdf')
 
         images_in_cluster = output_json['images']
-        
+
         images_num = len(images_in_cluster)
         print("Cluster = %d Images = %d" %(cluster, images_num))
-        
+
         plt.figure(figsize=(40 ,30))
         plt.rc('text', usetex=False)
         plt.suptitle( "Images in cluster #" + str(cluster) + " = " + str(len(images_in_cluster)), fontsize=50)
@@ -75,7 +75,7 @@ with open(inp_file, 'r') as f:
                    if distance_matrix[image_index[image], image_index[im]] == 0.00000000000001:
                         flag=True
                         break
-               if flag==False: 
+               if flag==False:
                     plt.subplot(12 / columns + 1, columns, count % 12 + 1)
                     plt.imshow(img)
                     plt.title(path)
@@ -93,7 +93,7 @@ with open(inp_file, 'r') as f:
             if count % 1000 == 0 and count > 0 and flag==False:
                 pdf.close()
                 break
-        try: 
+        try:
             if count_in_page >0:
                 pdf.savefig()
                 plt.close()
@@ -103,5 +103,3 @@ with open(inp_file, 'r') as f:
             pdf.close()
         except:
             pass
-
-
