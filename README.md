@@ -53,6 +53,28 @@ This script annotates each of the generated clusters using data collected from t
 The script takes as an input the phashes file (default is `phashes.txt`, you can change using the option `--phashes`) and the clustering output (default is `clustering_output.txt`, you can change using the option `--clustering`), and it outputs a json file in the format of `"cluster_no-kym_image"`: `"hamming distance"`. 
 This will includes all the KYM images that have a hamming distance of less or equal of 8 with a cluster medoid. To change the default distance using the option `--distance`.
 
+### Annotation via a vision-language model (fork addition)
+```
+pip install anthropic pillow
+export ANTHROPIC_API_KEY=...
+python annotate_via_llm.py
+```
+`annotate_via_kym.py` can only label a cluster whose medoid is within a few bits of an image already in the KYM pHash list. This script instead shows the medoid and a few other members of each cluster (default 3, change with `--samples`) to Claude and asks which meme the cluster is built on, so clusters with no KYM match still get a name and a description.
+It takes as an input the clustering output (default is `clustering_output.txt`, you can change using the option `--clustering`) and outputs a json file (default `llm_annotations.json`, change with `--output`) keyed by cluster number. For the cluster of "distracted boyfriend" images in `test_images` it produces:
+```json
+"2": {
+  "name": "Distracted Boyfriend",
+  "description": "Stock photo of a man walking with his girlfriend who turns to look at another woman in a red dress while his girlfriend looks on disapprovingly; labels are added to represent being tempted away from one thing by another. Variants here include meta-jokes about the stock photo itself and a face-swapped political version featuring Donald Trump, Ivanka Trump and Melania Trump.",
+  "visible_text": "Interview with Laura and Mario; Meme reporters; Interview with the photographer",
+  "confidence": "high",
+  "images_shown": ["test_images/59a5ae6d701afc43008b47f0750500.jpg", "test_images/170829.jpg", "test_images/83e.jpg"]
+}
+```
+Notes:
+- The model defaults to `claude-opus-5-5` (change with `--model`). To use Amazon Bedrock with your AWS credentials instead of an Anthropic API key, pass `--bedrock-region us-east-1` (`pip install "anthropic[bedrock]"`).
+- Images are scaled down to at most 1568 pixels on the longest side before they are sent.
+- The names are the model's reading of the images, not a lookup, so treat low-confidence names as suggestions. Every request is billed per token, so on a large clustering run it on the clusters KYM could not annotate rather than on all of them.
+
 ## Dataset
 The dataset used for the paper below is available at https://zenodo.org/record/3699670#.XmZgkZNKi3A. The dataset contains all the image URLs and pHashes for all the images that were posted on Reddit, Twitter (1% Streaming API), 4chan's Politically Incorrect (/pol/) board, and Gab.
 
